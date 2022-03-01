@@ -612,7 +612,11 @@ function getHoursBudgetFromYearly( projectCodes, yearlyBudget, renewalDate ) {
     return acc + matchingProjects[ 0 ][ PROJECT_TIME_COLUMN ];
   }, 0);
 
-  if ( totalTime <= 0 ) {
+  if (
+     totalTime <= 0 ||
+     ! yearlyBudget ||
+     ! renewalDate
+   ) {
    return null;
   }
 
