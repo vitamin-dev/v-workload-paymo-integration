@@ -21,6 +21,11 @@ const DOC_PROP_KEY_NAME     = 'v_updated_meta_key_id';
 const DEV_META_KEY_NAME     = 'v_last_updated';
 const FIVE_MINUTE_MILLI     = 300000;
 
+7140248 (overarching) + 1431255 (cc social) + 742507 (greater-promise social) = 9314010 mins;
+9314010 / 3600 = 2587.225hrs;
+3410 (proj budget) - 2587.225 = 822.775 hrs left until budget is met.
+284.16666667 (projected budget/month) * 4 (months until renewal) = 1136.66666668 hrs should be left;
+1136.66666668 - 822.775 = 822.775 hrs left until budget is met.
 
 /*-------------------------------------*\
   Helpers
@@ -623,7 +628,7 @@ function getHoursBudgetFromYearly( projectCodes, yearlyBudget, renewalDate ) {
   const timeLeft        = yearlyBudget - timeToRoundedHours_(totalTime);
   const monthlyBudget   = yearlyBudget / 12;
   const currentMonth    = new Date().getMonth();
-  const renewalMonth    = renewalDate.getDate() === 1 ? renewalDate.getMonth() - 1 : renewalDate.getMonth();
+  const renewalMonth    = renewalDate.getMonth();
   const remainingMonths = (currentMonth + 1) > renewalMonth ? 12 - currentMonth + renewalMonth : renewalMonth - currentMonth;
   // const timeLeftThisMonth = timeLeft - ( remainingMonths * monthlyBudget );
 
