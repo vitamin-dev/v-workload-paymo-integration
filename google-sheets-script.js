@@ -21,12 +21,6 @@ const DOC_PROP_KEY_NAME     = 'v_updated_meta_key_id';
 const DEV_META_KEY_NAME     = 'v_last_updated';
 const FIVE_MINUTE_MILLI     = 300000;
 
-7140248 (overarching) + 1431255 (cc social) + 742507 (greater-promise social) = 9314010 mins;
-9314010 / 3600 = 2587.225hrs;
-3410 (proj budget) - 2587.225 = 822.775 hrs left until budget is met.
-284.16666667 (projected budget/month) * 4 (months until renewal) = 1136.66666668 hrs should be left;
-1136.66666668 - 822.775 = 822.775 hrs left until budget is met.
-
 /*-------------------------------------*\
   Helpers
 \*-------------------------------------*/
@@ -601,36 +595,38 @@ function getHoursBudget( projectCode ) {
  * @customfunction
  */
 function getHoursBudgetFromYearly( projectCodes, yearlyBudget, renewalDate ) {
-  const sanitizedCodes = projectCodes.split( ',' ).map( sanitizeCode_ );
-  const totalTime = sanitizedCodes.reduce( ( acc, code ) => {
-    if ( ! code ) {
-      return acc;
-    }
+   const sanitizedCodes = projectCodes.split( ',' ).map( sanitizeCode_ );
+   const totalTime = sanitizedCodes.reduce( ( acc, code ) => {
+      if ( ! code ) {
+         return acc;
+      }
 
-    const matchingProjects = findIn_( PROJECT_CODE_COLUMN, code );
-    if ( ! matchingProjects.length ) {
-      // attempt to fetch directly from API
-      const singleReport = fetchSingleReportObject_( code );
-      return singleReport ? acc + Number( singleReport.budget_hours ).toPrecision(3) : acc;
-    }
+      const matchingProjects = findIn_( PROJECT_CODE_COLUMN, code );
+      if ( ! matchingProjects.length ) {
+         // attempt to fetch directly from API
+         const singleReport = fetchSingleReportObject_( code );
+         return singleReport ? acc + Number( singleReport.budget_hours ).toPrecision(3) : acc;
+      }
 
-    return acc + matchingProjects[ 0 ][ PROJECT_TIME_COLUMN ];
-  }, 0);
+      return acc + matchingProjects[ 0 ][ PROJECT_TIME_COLUMN ];
+   }, 0);
 
   if (
-     totalTime <= 0 ||
-     ! yearlyBudget ||
-     ! renewalDate
-   ) {
+    totalTime <= 0 ||
+    ! yearlyBudget ||
+    ! renewalDate
+  ) {
    return null;
   }
 
-  const timeLeft        = yearlyBudget - timeToRoundedHours_(totalTime);
+   const timeLeft        = yearlyBudget - timeToRoundedHours_(totalTime);
   const monthlyBudget   = yearlyBudget / 12;
-  const currentMonth    = new Date().getMonth();
-  const renewalMonth    = renewalDate.getMonth();
-  const remainingMonths = (currentMonth + 1) > renewalMonth ? 12 - currentMonth + renewalMonth : renewalMonth - currentMonth;
-  // const timeLeftThisMonth = timeLeft - ( remainingMonths * monthlyBudget );
+  const currentDate     = new Date();
 
-  return timeLeft - ( remainingMonths * monthlyBudget );
+  // assume it's the end of the month for correct calculation
+  const currentMonth    = currentDate.getMonth() + 1;
+  const renewalMonth    = renewalDate.getMonth();
+  const remainingMonths = currentDate >= renewalDate ? 0 : renewalMonth - currentMonth;
+
+   return timeLeft - ( remainingMonths * monthlyBudget );
 }
