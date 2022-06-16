@@ -21,6 +21,7 @@ const DOC_PROP_KEY_NAME     = 'v_updated_meta_key_id';
 const DEV_META_KEY_NAME     = 'v_last_updated';
 const FIVE_MINUTE_MILLI     = 300000;
 
+
 /*-------------------------------------*\
   Helpers
 \*-------------------------------------*/
@@ -61,7 +62,7 @@ function getPaymoRequestParams_( type = 'GET' ) {
  * @return { array } The row of data
  */
 function findIn_( column, searchValue ) {
-  let results = [];
+  let result = [];
 
   const sheet = SpreadsheetApp.getActive().getSheetByName( SHEET_NAME );
 
@@ -70,19 +71,22 @@ function findIn_( column, searchValue ) {
   }
 
   const data = sheet.getDataRange().getValues();
+  let found  = false;
 
-  for ( let i = 0; i < data.length; i++ ) {
-    if (
-    i === 0 ||
-    data[i][column] !== searchValue
-   ) {
+  for ( let i = 1; i < data.length; i++ ) {
+    if ( found ) {
+      break;
+    }
+
+    if ( searchValue.localeCompare(data[i][column]) !== 0 ) {
       continue;
     }
 
-    results.push( data[i] );
+    result =  data[i];
+    found  = true;
   }
 
-  return results;
+  return result;
 }
 
 /**
@@ -115,11 +119,7 @@ function timeToRoundedHours_( time ) {
     return;
   }
 
-  let projectHours = false;
-
-  if ( result.length === 1 ) {
-    projectHours = timeToRoundedHours_( result[0][ PROJECT_TIME_COLUMN ] );
-  }
+  let projectHours = timeToRoundedHours_( result[ PROJECT_TIME_COLUMN ] );
 
   return projectHours;
 }
@@ -204,39 +204,39 @@ function setMetadata_() {
 
   // Set metadata w/ last updated date
   let metaKeyId   = PropertiesService
-   .getDocumentProperties()
+    .getDocumentProperties()
     .getProperty( DOC_PROP_KEY_NAME );
   const updatedOn = new Date().toISOString();
 
   if ( metaKeyId ) {
-   const updatedMeta = document
-    .createDeveloperMetadataFinder()
+    const updatedMeta = document
+      .createDeveloperMetadataFinder()
       .withId( Number( metaKeyId ) )
       .find()[ 0 ];
-   updatedMeta.setValue( updatedOn );
+    updatedMeta.setValue( updatedOn );
   } else {
-   // Add dev metadata to sheet
-   document.addDeveloperMetadata(
-    DEV_META_KEY_NAME,
-    updatedOn,
-    SpreadsheetApp.DeveloperMetadataVisibility.DOCUMENT
-   );
-
-   // Get metadata that was just added
-   const metaKey = document
-    .getDeveloperMetadata()
-    .filter( m => m.getKey() === DEV_META_KEY_NAME )[0];
-
-   // Get Unique ID from metadata
-   metaKeyId = String( metaKey.getId() );
-
-   // Store Unique ID for later retrieval
-   PropertiesService
-    .getDocumentProperties()
-    .setProperty(
-      DOC_PROP_KEY_NAME,
-      metaKeyId
+    // Add dev metadata to sheet
+    document.addDeveloperMetadata(
+      DEV_META_KEY_NAME,
+      updatedOn,
+      SpreadsheetApp.DeveloperMetadataVisibility.DOCUMENT
     );
+
+    // Get metadata that was just added
+    const metaKey = document
+      .getDeveloperMetadata()
+      .filter( m => m.getKey() === DEV_META_KEY_NAME )[0];
+
+    // Get Unique ID from metadata
+    metaKeyId = String( metaKey.getId() );
+
+    // Store Unique ID for later retrieval
+    PropertiesService
+      .getDocumentProperties()
+      .setProperty(
+        DOC_PROP_KEY_NAME,
+        metaKeyId
+      );
   }
 }
 
@@ -382,7 +382,7 @@ function initializeSheet_() {
  */
 function checkForUpdate_() {
   const metaKeyId   = PropertiesService
-   .getDocumentProperties()
+    .getDocumentProperties()
     .getProperty( DOC_PROP_KEY_NAME );
 
   if ( ! metaKeyId ) {
@@ -390,8 +390,8 @@ function checkForUpdate_() {
   }
 
   const updatedMeta = SpreadsheetApp
-   .getActive()
-   .createDeveloperMetadataFinder()
+    .getActive()
+    .createDeveloperMetadataFinder()
     .withId( Number( metaKeyId ) )
     .find()[ 0 ];
   const today      = new Date();
@@ -412,8 +412,38 @@ function updateCustomFunctions_() {
    .matchCase(false)
    .useRegularExpression(true)
    .findAll();
+  const customBudgetHoursCells = ss
+   .createTextFinder( '=GETHOURSBUDGETFORMONTH\\([^)]*\\)' )
+   .matchFormulaText(true)
+   .matchCase(false)
+   .useRegularExpression(true)
+   .findAll()
+  const customTimestampCells = ss
+   .createTextFinder('=GETREPORTLASTUPDATED\\([^)]*\\)')
+   .matchFormulaText(true)
+   .matchCase(false)
+   .useRegularExpression(true)
+   .findAll();
+  const customYearlyCells = ss
+   .createTextFinder('=GETRECONCILEDHOURSFROMYEARLY\\([^)]*\\)')
+   .matchFormulaText(true)
+   .matchCase(false)
+   .useRegularExpression(true)
+   .findAll();
+  const customProjectedCells = ss
+   .createTextFinder('=GETPROJECTEDRETAINERHOURS\\([^)]*\\)')
+   .matchFormulaText(true)
+   .matchCase(false)
+   .useRegularExpression(true)
+   .findAll();
 
-  if ( ! customHourCells.length ) {
+  if (
+    ! customHourCells.length &&
+    ! customBudgetHoursCells.length &&
+    ! customTimestampCells.length &&
+    ! customYearlyCells.length &&
+    ! customProjectedCells
+  ) {
    return;
   }
 
@@ -426,31 +456,16 @@ function updateCustomFunctions_() {
 
   [ ...customHourCells ].forEach( cellClear );
 
-  const customBudgetHoursCells = ss
-   .createTextFinder( '=GETHOURSBUDGET\\([^)]*\\)' )
-   .matchFormulaText(true)
-   .matchCase(false)
-   .useRegularExpression(true)
-   .findAll()
-  const customTimestampCells = ss
-   .createTextFinder('=GETREPORTLASTUPDATED\\([^)]*\\)')
-   .matchFormulaText(true)
-   .matchCase(false)
-   .useRegularExpression(true)
-   .findAll();
-  const customYearlyCells = ss
-   .createTextFinder('=GETHOURSBUDGETFROMYEARLY\\([^)]*\\)')
-   .matchFormulaText(true)
-   .matchCase(false)
-   .useRegularExpression(true)
-   .findAll();
-
   if ( customBudgetHoursCells.length ) {
    [ ...customBudgetHoursCells ].forEach( cellClear );
   }
 
   if ( customYearlyCells.length ) {
    [ ...customYearlyCells ].forEach( cellClear );
+  }
+
+  if ( customProjectedCells.length ) {
+   [ ...customProjectedCells ].forEach( cellClear );
   }
 
   // Timestamp should be saved last
@@ -461,6 +476,33 @@ function updateCustomFunctions_() {
     c.setFormula( '=GETREPORTLASTUPDATED()' );
    } );
   }
+}
+
+/**
+ * Get retainer time left
+ */
+function getRetainerTimeLeft_( projectCodes, yearlyBudget ) {
+  const sanitizedCodes = projectCodes.split( ',' ).map( sanitizeCode_ );
+  const totalTime = sanitizedCodes.reduce( ( acc, code ) => {
+    if ( ! code ) {
+      return acc;
+    }
+
+    const matchingProject = findIn_( PROJECT_CODE_COLUMN, code );
+    if ( ! matchingProject.length ) {
+      // attempt to fetch directly from API
+      const singleReport = fetchSingleReportObject_( code );
+      return singleReport ? acc + Number( singleReport.budget_hours ).toPrecision(3) : acc;
+    }
+
+    return acc + matchingProject[ PROJECT_TIME_COLUMN ];
+  }, 0);
+
+  if ( totalTime <= 0 || ! yearlyBudget ) {
+    return null;
+  }
+
+  return Number( yearlyBudget - timeToRoundedHours_(totalTime) );
 }
 
 /*------------ End Helpers---------------*/
@@ -542,15 +584,15 @@ function getReconciledHours( projectCode, untrackedTime = 0 ) {
   ) {
    return null;
   }
-  const matchingProjects = findIn_( PROJECT_CODE_COLUMN, projectCode );
-  if ( ! matchingProjects.length ) {
-   // attempt to fetch directly from API
-   const singleReport = fetchSingleReportObject_( projectCode );
+  const matchingProject = findIn_( PROJECT_CODE_COLUMN, projectCode );
+  if ( ! matchingProject.length ) {
+    // attempt to fetch directly from API
+    const singleReport = fetchSingleReportObject_( projectCode );
     return singleReport ? Number( singleReport.budget_hours ).toPrecision(3) + ' hours remaining' : 'Project not found.';
   }
 
-  const projectTime    = matchingProjects[ 0 ][ PROJECT_TIME_COLUMN ];
-  const retainerBudget = Number( matchingProjects[ 0 ][ PROJECT_BUDGET_COLUMN ] );
+  const projectTime    = matchingProject[ PROJECT_TIME_COLUMN ];
+  const retainerBudget = Number( matchingProject[ PROJECT_BUDGET_COLUMN ] );
 
   return ( Number( retainerBudget ) - timeToRoundedHours_( projectTime ) - untrackedTime ).toPrecision(3) + ' hours remaining';
 }
@@ -562,7 +604,7 @@ function getReconciledHours( projectCode, untrackedTime = 0 ) {
  * @return { int|string } The current retainer hours left in the project or null on failure
  * @customfunction
  */
-function getHoursBudget( projectCode ) {
+function getHoursBudgetForMonth( projectCode ) {
   projectCode = sanitizeCode_( projectCode );
 
   if (
@@ -572,15 +614,15 @@ function getHoursBudget( projectCode ) {
    return null;
   }
 
-  const matchingProjects = findIn_( PROJECT_CODE_COLUMN, projectCode );
-  if ( ! matchingProjects.length ) {
-   // attempt to fetch directly from API
-   const singleReport = fetchSingleReportObject_( projectCode );
+  const matchingProject = findIn_( PROJECT_CODE_COLUMN, projectCode );
+  if ( ! matchingProject.length ) {
+    // attempt to fetch directly from API
+    const singleReport = fetchSingleReportObject_( projectCode );
 
     return singleReport ? singleReport.budget_hours : 'Project not found.';
   }
 
-  const projectBudget = Number( matchingProjects[ 0 ][ PROJECT_BUDGET_COLUMN ] );
+  const projectBudget = Number( matchingProject[ PROJECT_BUDGET_COLUMN ] );
 
   return projectBudget.toPrecision(3);
 }
@@ -594,39 +636,71 @@ function getHoursBudget( projectCode ) {
  * @returns { int|null } The current retainer hours left in the project for this month or null on failure
  * @customfunction
  */
-function getHoursBudgetFromYearly( projectCodes, yearlyBudget, renewalDate ) {
-   const sanitizedCodes = projectCodes.split( ',' ).map( sanitizeCode_ );
-   const totalTime = sanitizedCodes.reduce( ( acc, code ) => {
-      if ( ! code ) {
-         return acc;
-      }
+function getReconciledHoursFromYearly( projectCodes, yearlyBudget, renewalDate ) {
+  /* const sanitizedCodes = projectCodes.split( ',' ).map( sanitizeCode_ );
+  const totalTime = sanitizedCodes.reduce( ( acc, code ) => {
+    if ( ! code ) {
+      return acc;
+    }
 
-      const matchingProjects = findIn_( PROJECT_CODE_COLUMN, code );
-      if ( ! matchingProjects.length ) {
-         // attempt to fetch directly from API
-         const singleReport = fetchSingleReportObject_( code );
-         return singleReport ? acc + Number( singleReport.budget_hours ).toPrecision(3) : acc;
-      }
+    const matchingProject = findIn_( PROJECT_CODE_COLUMN, code );
+    if ( ! matchingProject.length ) {
+      // attempt to fetch directly from API
+      const singleReport = fetchSingleReportObject_( code );
+      return singleReport ? acc + Number( singleReport.budget_hours ).toPrecision(3) : acc;
+    }
 
-      return acc + matchingProjects[ 0 ][ PROJECT_TIME_COLUMN ];
-   }, 0);
+    return acc + matchingProject[ PROJECT_TIME_COLUMN ];
+  }, 0);
+ */
+  const timeLeft = getRetainerTimeLeft_( projectCodes, yearlyBudget );
 
-  if (
-    totalTime <= 0 ||
-    ! yearlyBudget ||
-    ! renewalDate
-  ) {
-   return null;
+  if ( ! timeLeft || ! renewalDate ) {
+    return null;
   }
 
-   const timeLeft        = yearlyBudget - timeToRoundedHours_(totalTime);
+  // const timeLeft        = yearlyBudget - timeToRoundedHours_(totalTime);
   const monthlyBudget   = yearlyBudget / 12;
   const currentDate     = new Date();
 
   // assume it's the end of the month for correct calculation
   const currentMonth    = currentDate.getMonth() + 1;
   const renewalMonth    = renewalDate.getMonth();
-  const remainingMonths = currentDate >= renewalDate ? 0 : renewalMonth - currentMonth;
+  const remainingMonths = currentDate >= renewalDate ? 0 : ( renewalMonth < currentMonth ? 12 - (currentMonth - renewalMonth) : renewalMonth - currentMonth);
 
-   return timeLeft - ( remainingMonths * monthlyBudget );
+  return timeLeft - ( remainingMonths * monthlyBudget );
+}
+
+/**
+ * Gets projected retainer hour lefts for the remainder of retainer
+ *
+ * @param { string } projectCodes A single project code or a csv list of project codes
+ * @param { int } yearlyBudget The project's yearly budget
+ * @param { date } renewalDate The date the project will renew
+ * @returns { int|null } The current retainer hours left in the project for this month or null on failure
+ * @customfunction
+ */
+function getProjectedRetainerHours( projectCodes = 'TEST', yearlyBudget = 1200, renewalDate = new Date('1/1/2023') ) {
+  const timeLeft = getRetainerTimeLeft_( projectCodes, yearlyBudget );
+
+  if ( ! timeLeft || ! renewalDate ) {
+    return null;
+  }
+
+  const currentDate     = new Date();
+
+  // assume it's the end of the month if 15 days or more into current month
+  const currentMonth    = currentDate.getDate() >= 25 ? currentDate.getMonth() + 1 : currentDate.getMonth();
+  const renewalMonth    = renewalDate.getMonth();
+
+  // get month difference
+  let remainingMonths;
+  remainingMonths = (renewalDate.getFullYear() - currentDate.getFullYear()) * 12;
+  remainingMonths -= currentMonth;
+  remainingMonths += renewalMonth;
+  remainingMonths = remainingMonths <= 0 ? 0 : remainingMonths;
+
+  // const remainingMonths = currentDate >= renewalDate ? 0 : ( renewalMonth < currentMonth ? 12 - (currentMonth - renewalMonth) : renewalMonth - currentMonth);
+
+  return remainingMonths > 0 ? Number(timeLeft / remainingMonths) : 0;
 }
