@@ -178,8 +178,6 @@ function fetchSingleReportObject_( projectCode ) {
   }
 
   const projects = JSON.parse( response.getContentText() ).projects.filter( p => p.code.toUpperCase() === projectCode.toUpperCase() );
-  // SpreadsheetApp.getUi().alert( JSON.stringify( JSON.parse( response.getContentText() ).projects ) );
-  // let result = projects.length ? projects[0] : false;
 
   return projects.length ? projects[0] : false;
 }
@@ -341,8 +339,8 @@ function resetApiSheet_() {
  */
 function apiSheetProcess_() {
   buildApiSheet_();
-  setMetadata_();
   updateCustomFunctions_();
+  setMetadata_();
   SpreadsheetApp.flush();
 }
 
@@ -412,12 +410,18 @@ function updateCustomFunctions_() {
    .matchCase(false)
    .useRegularExpression(true)
    .findAll();
-  const customBudgetHoursCells = ss
-   .createTextFinder( '=GETHOURSBUDGETFORMONTH\\([^)]*\\)' )
+  const customSingleBudgetCells = ss
+   .createTextFinder( '=GETPROJECTBUDGETFROMSINGLE\\([^)]*\\)' )
    .matchFormulaText(true)
    .matchCase(false)
    .useRegularExpression(true)
-   .findAll()
+   .findAll();
+  const customMultiBudgetCells = ss
+   .createTextFinder( '=GETPROJECTBUDGETFROMMULTIPLE\\([^)]*\\)' )
+   .matchFormulaText(true)
+   .matchCase(false)
+   .useRegularExpression(true)
+   .findAll();
   const customTimestampCells = ss
    .createTextFinder('=GETREPORTLASTUPDATED\\([^)]*\\)')
    .matchFormulaText(true)
@@ -439,7 +443,7 @@ function updateCustomFunctions_() {
 
   if (
     ! customHourCells.length &&
-    ! customBudgetHoursCells.length &&
+    ! customSingleBudgetCells.length &&
     ! customTimestampCells.length &&
     ! customYearlyCells.length &&
     ! customProjectedCells
@@ -456,8 +460,12 @@ function updateCustomFunctions_() {
 
   [ ...customHourCells ].forEach( cellClear );
 
-  if ( customBudgetHoursCells.length ) {
-   [ ...customBudgetHoursCells ].forEach( cellClear );
+  if ( customSingleBudgetCells.length ) {
+   [ ...customSingleBudgetCells ].forEach( cellClear );
+  }
+
+  if ( customMultiBudgetCells.length ) {
+   [ ...customMultiBudgetCells ].forEach( cellClear );
   }
 
   if ( customYearlyCells.length ) {
@@ -492,7 +500,7 @@ function getRetainerTimeLeft_( projectCodes, yearlyBudget ) {
     if ( ! matchingProject.length ) {
       // attempt to fetch directly from API
       const singleReport = fetchSingleReportObject_( code );
-      return singleReport ? acc + Number( singleReport.budget_hours ).toPrecision(3) : acc;
+      return singleReport ? acc + Number( singleReport.budget_hours ).toFixed(2) : acc;
     }
 
     return acc + matchingProject[ PROJECT_TIME_COLUMN ];
@@ -560,6 +568,9 @@ function getReportLastUpdated() {
     .withId( Number( metaKeyId ) )
     .find()[ 0 ];
 
+  // SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  // return `Meta value: "${updatedMeta.getValue()}"`;
+
   return Utilities.formatDate(
     new Date( updatedMeta.getValue() ),
     SpreadsheetApp.getActive().getSpreadsheetTimeZone(),
@@ -588,13 +599,13 @@ function getReconciledHours( projectCode, untrackedTime = 0 ) {
   if ( ! matchingProject.length ) {
     // attempt to fetch directly from API
     const singleReport = fetchSingleReportObject_( projectCode );
-    return singleReport ? Number( singleReport.budget_hours ).toPrecision(3) + ' hours remaining' : 'Project not found.';
+    return singleReport ? Number( singleReport.budget_hours ).toFixed(2) + ' hours remaining' : 'Project not found.';
   }
 
   const projectTime    = matchingProject[ PROJECT_TIME_COLUMN ];
   const retainerBudget = Number( matchingProject[ PROJECT_BUDGET_COLUMN ] );
 
-  return ( Number( retainerBudget ) - timeToRoundedHours_( projectTime ) - untrackedTime ).toPrecision(3) + ' hours remaining';
+  return ( Number( retainerBudget ) - timeToRoundedHours_( projectTime ) - untrackedTime ).toFixed(2) + ' hours remaining';
 }
 
 /**
@@ -604,7 +615,7 @@ function getReconciledHours( projectCode, untrackedTime = 0 ) {
  * @return { int|string } The current retainer hours left in the project or null on failure
  * @customfunction
  */
-function getHoursBudgetForMonth( projectCode ) {
+function getProjectBudgetFromSingle( projectCode ) {
   projectCode = sanitizeCode_( projectCode );
 
   if (
@@ -624,7 +635,44 @@ function getHoursBudgetForMonth( projectCode ) {
 
   const projectBudget = Number( matchingProject[ PROJECT_BUDGET_COLUMN ] );
 
-  return projectBudget.toPrecision(3);
+  return projectBudget.toFixed(2);
+}
+
+/**
+ * Gets current project hours budget from multiple project codes
+ *
+ * @param { string } projectCodes     A project code to query the projects DB
+ * @return { int|string } The current retainer hours left in the project or null on failure
+ * @customfunction
+ */
+function getProjectBudgetFromMultiple( projectCodes ) {
+	if (
+		! projectCodes ||
+		typeof projectCodes !== 'string'
+	) {
+		return null;
+	}
+
+	const sanitizedCodes = projectCodes.split( ',' ).map( sanitizeCode_ );
+	const projectBudget = sanitizedCodes.reduce( ( acc, code ) => {
+		if ( ! code ) {
+			return acc;
+		}
+
+		const matchingProject = findIn_( PROJECT_CODE_COLUMN, code );
+
+		if ( ! matchingProject.length ) {
+			// attempt to fetch directly from API
+			const singleReport = fetchSingleReportObject_( code );
+
+			return singleReport ? acc + Number( singleReport.budget_hours ) : acc;
+		}
+
+		return acc + Number( matchingProject[ PROJECT_BUDGET_COLUMN ] );
+
+	}, 0);
+
+	return projectBudget.toFixed(2);
 }
 
 /**
@@ -702,5 +750,5 @@ function getProjectedRetainerHours( projectCodes = 'TEST', yearlyBudget = 1200, 
 
   // const remainingMonths = currentDate >= renewalDate ? 0 : ( renewalMonth < currentMonth ? 12 - (currentMonth - renewalMonth) : renewalMonth - currentMonth);
 
-  return remainingMonths > 0 ? Number(timeLeft / remainingMonths) : 0;
+  return remainingMonths > 0 ? Number(timeLeft / remainingMonths).toFixed(2) : 0;
 }
